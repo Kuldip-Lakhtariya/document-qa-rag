@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Document Q&A</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: 'Segoe UI', sans-serif;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 20px 140px;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .subtitle { color: #8b949e; font-size: 13px; margin-bottom: 20px; }
+
+  /* Upload bar — always visible at top, not a separate tab */
+  .upload-bar {
+    display: flex; gap: 10px; align-items: center;
+    background: #161b22; border: 1px solid #30363d;
+    border-radius: 8px; padding: 12px 14px; margin-bottom: 24px;
+  }
+  .upload-bar input[type="file"] { flex: 1; font-size: 13px; color: #8b949e; }
+  #upload-name { font-size: 13px; color: #8b949e; }
+  button.action {
+    background: #4fd1c5; color: #0d1117; border: none;
+    padding: 9px 16px; border-radius: 6px; font-weight: 600;
+    cursor: pointer; font-size: 13px; white-space: nowrap;
+  }
+  button.action:disabled { background: #2a6b64; cursor: not-allowed; }
+  .doc-status { font-size: 12.5px; margin-top: 8px; }
+  .doc-status.ready { color: #4fd1c5; }
+  .doc-status.error { color: #f85149; }
+
+  /* Chat log */
+  #chat-log { display: flex; flex-direction: column; gap: 14px; }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 8px; font-size: 14.5px; line-height: 1.5; }
+  .msg.question {
+    align-self: flex-end; background: #1f6f68; color: #eafffb;
+    border-bottom-right-radius: 2px;
+  }
+  .msg.answer {
+    align-self: flex-start; background: #161b22; border: 1px solid #30363d;
+    border-bottom-left-radius: 2px;
+  }
+  .msg.answer.loading { color: #8b949e; font-style: italic; }
+  .msg.answer.error { color: #f85149; border-color: #4a2426; }
+
+  /* Fixed input bar at bottom */
+  .ask-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #0d1117; border-top: 1px solid #30363d;
+    padding: 14px 20px; display: flex; gap: 10px;
+    max-width: 720px; margin: 0 auto;
+  }
+  .ask-bar input[type="text"] {
+    flex: 1; padding: 11px 14px; background: #161b22;
+    border: 1px solid #30363d; color: #e6edf3; border-radius: 6px; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Document Q&A</h1>
+<div class="subtitle">Upload a PDF once, then ask as many questions as you like.</div>
+
+<div class="upload-bar">
+  <input type="file" id="pdf-input" accept="application/pdf">
+  <button class="action" id="upload-btn" onclick="uploadPdf()">Upload</button>
+</div>
+<div id="upload-status" class="doc-status"></div>
+
+<div id="chat-log"></div>
+
+<div class="ask-bar">
+  <input type="text" id="question-input" placeholder="Ask a question about the document..."
+         onkeydown="if(event.key === 'Enter') askQuestion()">
+  <button class="action" id="ask-btn" onclick="askQuestion()">Ask</button>
+</div>
+
+<script>
+let documentReady = false;
+
+async function uploadPdf() {
+  const fileInput = document.getElementById('pdf-input');
+  const status = document.getElementById('upload-status');
+  const btn = document.getElementById('upload-btn');
+
+  if (!fileInput.files.length) {
+    status.textContent = "Please choose a PDF first.";
+    status.className = "doc-status error";
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('pdf', fileInput.files[0]);
+
+  btn.disabled = true;
+  status.className = "doc-status";
+  status.textContent = "Processing PDF... this may take a moment.";
+
+  try {
+    const response = await fetch('/upload', { method: 'POST', body: formData });
+    const result = await response.json();
+
+    if (!response.ok) throw new Error(result.error || "Upload failed");
+
+    documentReady = true;
+    status.className = "doc-status ready";
+    status.textContent = `Ready — ${result.chunks_indexed} chunks indexed. Ask away below.`;
+  } catch (err) {
+    status.className = "doc-status error";
+    status.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function appendMessage(role, text, extraClass = "") {
+  const log = document.getElementById('chat-log');
+  const div = document.createElement('div');
+  div.className = `msg ${role} ${extraClass}`.trim();
+  div.textContent = text;
+  log.appendChild(div);
+  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  return div;
+}
+
+async function askQuestion() {
+  const input = document.getElementById('question-input');
+  const btn = document.getElementById('ask-btn');
+  const question = input.value.trim();
+
+  if (!question) return;
+
+  if (!documentReady) {
+    appendMessage('answer', 'Upload a PDF first before asking questions.', 'error');
+    return;
+  }
+
+  appendMessage('question', question);
+  input.value = "";
+  btn.disabled = true;
+
+  const loadingMsg = appendMessage('answer', 'Thinking...', 'loading');
+
+  try {
+    const response = await fetch('/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question })
+    });
+    const result = await response.json();
+
+    if (!response.ok) throw new Error(result.error || "Something went wrong");
+
+    loadingMsg.className = "msg answer";
+    loadingMsg.textContent = result.answer;
+  } catch (err) {
+    loadingMsg.className = "msg answer error";
+    loadingMsg.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+
+</body>
+</html>
