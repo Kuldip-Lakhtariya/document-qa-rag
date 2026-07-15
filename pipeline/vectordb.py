@@ -21,7 +21,7 @@ class VectorDB:
         self.index.add(vectors)
         self.chunk_lookup.extend(chunks)
 
-    def search(self, query_embedding: List[float], top_k: int = 3) -> List[Dict[str, object]]:
+    def search(self, query_embedding: List[float], top_k: int = 10) -> List[Dict[str, object]]:
         """
         Finds the top_k most similar chunks to a query embedding.
         Returns the actual chunk dicts, not raw FAISS positions.
