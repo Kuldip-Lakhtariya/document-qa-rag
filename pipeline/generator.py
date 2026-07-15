@@ -1,28 +1,20 @@
-import google.generativeai as genai
-import os
+from google import genai
+from google.genai import types
 from typing import List, Dict
 
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-
 SYSTEM_INSTRUCTION = (
-    "You are a document Q&A assistant. Only answer using the provided "
-    "context below. If the answer is not contained in the context, say "
-    "so explicitly — do not use outside knowledge or guess."
+    "You are a document Q&A assistant. Answer using the provided context. "
+    "If the exact answer isn't stated directly, but can be reasonably "
+    "inferred from the context (e.g. counting visible section headers), "
+    "do so and say it's an inference. Only say the information is not "
+    "available if there is genuinely nothing in the context related to "
+    "the question — don't refuse just because the exact phrasing isn't there."
 )
 
-_model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=SYSTEM_INSTRUCTION
-)
+_client = genai.Client()
 
 
 def generate_answer(retrieved_chunks: List[Dict[str, object]], question: str) -> str:
-    """
-    Takes top-k retrieved chunks + the user's question, and asks Gemini
-    to answer using only that context.
-    """
-    # Build a context block that includes page numbers, so the model
-    # CAN cite them in its answer if asked to.
     context_block = "\n\n".join(
         f"[Page {chunk['page']}]: {chunk['text']}"
         for chunk in retrieved_chunks
@@ -33,12 +25,15 @@ def generate_answer(retrieved_chunks: List[Dict[str, object]], question: str) ->
         f"Question: {question}"
     )
 
-    response = _model.generate_content(
-        user_prompt,
-        generation_config={
-            "temperature": 0.2,   # low — factual, not creative
-            "max_output_tokens": 500
-        }
+    response = _client.models.generate_content(
+        model="gemini-3.5-flash",
+        contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_INSTRUCTION,
+            temperature=0.2,
+            max_output_tokens=1024,  # raised from 500 — leaves room for thinking + full answer
+            thinking_config=types.ThinkingConfig(thinking_level="low")  # minimal reasoning needed for direct Q&A
+        )
     )
 
     return response.text
