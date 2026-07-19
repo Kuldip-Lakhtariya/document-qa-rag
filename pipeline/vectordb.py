@@ -35,3 +35,11 @@ class VectorDB:
             results.append(self.chunk_lookup[position])
 
         return results
+
+    def get_all_chunks(self) -> List[Dict[str, object]]:
+            """
+            Returns every chunk currently indexed, bypassing similarity search
+            entirely. Used for broad/summary-style questions where top-k
+            retrieval wouldn't capture enough of the document.
+            """
+            return self.chunk_lookup
