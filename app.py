@@ -81,6 +81,7 @@ def upload():
 
     return jsonify({"message": "PDF processed", "chunks_indexed": len(embedded_chunks)})
 
+from pipeline.question_classifier import is_broad_question
 
 @app.route("/ask", methods=["POST"])
 def ask():
@@ -92,9 +93,15 @@ def ask():
     question = data["question"]
 
     try:
-        query_embedding = embed_query(question)
-        top_chunks = vector_db.search(query_embedding, top_k=3)
-        answer = generate_answer(top_chunks, question)
+        if is_broad_question(question):
+            # Bypass retrieval — feed every indexed chunk so the model
+            # actually sees the whole document, not a fraction of it.
+            context_chunks = vector_db.get_all_chunks()
+        else:
+            query_embedding = embed_query(question)
+            context_chunks = vector_db.search(query_embedding, top_k=3)
+
+        answer = generate_answer(context_chunks, question)
     except Exception as e:
         # Covers Gemini being down, rate-limited, or any other API failure —
         # returns a clean JSON error instead of crashing into Flask's HTML page.
