@@ -20,11 +20,18 @@ BASE_DELAY_SECONDS = 1.0  # doubles each retry: ~1s, ~2s, ~4s
 
 
 def generate_answer(retrieved_chunks: List[Dict[str, object]], question: str) -> str:
+    conversation_history = conversation_history or []
+
+     history_block = "\n\n".join(
+        f"Q: {past_q}\nA: {past_a}" for past_q, past_a in conversation_history
+    )
+
     context_block = "\n\n".join(
         f"[Page {chunk['page']}]: {chunk['text']}"
         for chunk in retrieved_chunks
     )
     user_prompt = (
+        f"Previous conversation:\n{history_block}\n\n" if history_block else ""
         f"Context:\n{context_block}\n\n"
         f"Question: {question}"
     )
