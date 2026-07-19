@@ -1,6 +1,9 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session
 from dotenv import load_dotenv
 import os
+from typing import Dict, List, Tuple
+import uuid
+
 
 load_dotenv()  # loads GEMINI_API_KEY from .env into os.environ, locally
 
@@ -10,11 +13,30 @@ from pipeline.embedder import embed_chunks, embed_query
 from pipeline.vectordb import VectorDB
 from pipeline.generator import generate_answer
 
-
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
 
-# supports ONE uploaded document at a time across ALL users — a real
-# limitation to flag now, fix it later.
+MAX_HISTORY_TURNS = 3  # prior Q&A pairs sent as context — caps prompt size regardless of session length
+
+session_store: Dict[str, Dict[str, object]] = {}
+
+def get_session_id() -> str:
+    """Returns this browser's session ID, creating one on first visit."""
+    if "session_id" not in session:
+        session["session_id"] = str(uuid.uuid4())
+    return session["session_id"]
+
+
+def get_session_data() -> Dict[str, object]:
+    """Returns (creating if needed) this session's isolated document + history."""
+    session_id = get_session_id()
+    if session_id not in session_store:
+        session_store[session_id] = {
+            "vector_db": VectorDB(embedding_dim=384),
+            "history": []
+        }
+    return session_store[session_id]
+    
 vector_db = VectorDB(embedding_dim=384)
 
 UPLOAD_FOLDER = "uploads"
@@ -76,6 +98,7 @@ def upload():
         global vector_db
         vector_db = VectorDB(embedding_dim=384)
         vector_db.add_chunks(embedded_chunks)
+        session_data["history"] = []
     except (FileNotFoundError, RuntimeError) as e:
         return jsonify({"error": str(e)}), 500
 
@@ -102,6 +125,9 @@ def ask():
             context_chunks = vector_db.search(query_embedding, top_k=3)
 
         answer = generate_answer(context_chunks, question)
+        history.append((question, answer))
+        session_data["history"] = history[-MAX_HISTORY_TURNS:]  # sliding window — keep only the most recent 3
+        
     except Exception as e:
         # Covers Gemini being down, rate-limited, or any other API failure —
         # returns a clean JSON error instead of crashing into Flask's HTML page.
