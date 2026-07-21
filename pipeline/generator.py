@@ -19,10 +19,10 @@ MAX_RETRIES = 3           # 1 initial attempt + 3 retries = 4 total tries
 BASE_DELAY_SECONDS = 1.0  # doubles each retry: ~1s, ~2s, ~4s
 
 
-def generate_answer(retrieved_chunks: List[Dict[str, object]], question: str) -> str:
+def generate_answer(retrieved_chunks: List[Dict[str, object]], question: str,conversation_history: List[Tuple[str, str]] = None) -> str:
     conversation_history = conversation_history or []
 
-     history_block = "\n\n".join(
+    history_block = "\n\n".join(
         f"Q: {past_q}\nA: {past_a}" for past_q, past_a in conversation_history
     )
 
