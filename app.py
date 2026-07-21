@@ -136,5 +136,64 @@ def ask():
     return jsonify({"answer": answer})
 
 
+import json
+
+FEEDBACK_LOG = "feedback_log.jsonl"
+# Flag: this is a local file — same ephemeral-filesystem caveat as before.
+# On Render free tier it's wiped on restart/redeploy. Fine for now since
+# we're not depending on it surviving; revisit if we ever want durable
+# feedback history (same DB conversation as session storage).
+
+
+@app.route("/feedback", methods=["POST"])
+def feedback():
+    data = request.get_json()
+    if not data or "question" not in data or "rating" not in data:
+        return jsonify({"error": "Missing question or rating"}), 400
+
+    question = data["question"]
+    answer = data.get("answer", "")
+    rating = data["rating"]          # "up" or "down"
+    comment = data.get("comment", "")
+
+    with open(FEEDBACK_LOG, "a", encoding="utf-8") as log_file:
+        log_file.write(json.dumps({
+            "session_id": get_session_id(),
+            "question": question,
+            "answer": answer,
+            "rating": rating,
+            "comment": comment
+        }) + "\n")
+
+    if rating != "down":
+        return jsonify({"logged": True})
+
+    # Negative feedback — regenerate a fresh answer for the same question
+    session_data = get_session_data()
+    vector_db = session_data["vector_db"]
+    history = session_data["history"]
+
+    if len(vector_db.get_all_chunks()) == 0:
+        return jsonify({"logged": True, "regenerated": False})
+
+    try:
+        if is_broad_question(question):
+            context_chunks = vector_db.get_all_chunks()
+        else:
+            query_embedding = embed_query(question)
+            context_chunks = vector_db.search(query_embedding, top_k=3)
+
+        history_for_retry = history[:-1] if history and history[-1][0] == question else history
+        new_answer = generate_answer(context_chunks, question, history_for_retry)
+
+        if history and history[-1][0] == question:
+            history[-1] = (question, new_answer)
+            session_data["history"] = history
+
+        return jsonify({"logged": True, "regenerated": True, "answer": new_answer})
+    except Exception:
+        return jsonify({"logged": True, "regenerated": False}), 503
+
+
 if __name__ == "__main__":
     app.run(debug=False)  
