@@ -95,7 +95,7 @@ def upload():
         chunks = chunk_text(extracted_pages)
         embedded_chunks = embed_chunks(chunks)
 
-       session_data = get_session_data()
+        session_data = get_session_data()
         session_data["vector_db"] = VectorDB(embedding_dim=384)
         session_data["vector_db"].add_chunks(embedded_chunks)
         session_data["history"] = []
