@@ -130,7 +130,7 @@ def ask():
             query_embedding = embed_query(question)
             context_chunks = vector_db.search(query_embedding, top_k=3)
 
-        answer = generate_answer(context_chunks, question)
+        answer = generate_answer(context_chunks, question, history)
         history.append((question, answer))
         session_data["history"] = history[-MAX_HISTORY_TURNS:]  # sliding window — keep only the most recent 3
         
