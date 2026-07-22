@@ -37,8 +37,6 @@ def get_session_data() -> Dict[str, object]:
         }
     return session_store[session_id]
     
-vector_db = VectorDB(embedding_dim=384)
-
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
