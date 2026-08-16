@@ -12,6 +12,9 @@ from pipeline.chunker import chunk_text
 from pipeline.embedder import embed_chunks, embed_query
 from pipeline.vectordb import VectorDB
 from pipeline.generator import generate_answer
+from pipeline.question_classifier import is_broad_question
+from pipeline.graph import build_rag_graph
+
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
@@ -102,8 +105,6 @@ def upload():
 
     return jsonify({"message": "PDF processed", "chunks_indexed": len(embedded_chunks)})
 
-from pipeline.question_classifier import is_broad_question
-
 @app.route("/ask", methods=["POST"])
 def ask():
     data = request.get_json()
@@ -120,15 +121,16 @@ def ask():
         return jsonify({"error": "No document uploaded yet for this session"}), 400
 
     try:
-        if is_broad_question(question):
-            # Bypass retrieval — feed every indexed chunk so the model
-            # actually sees the whole document, not a fraction of it.
-            context_chunks = vector_db.get_all_chunks()
-        else:
-            query_embedding = embed_query(question)
-            context_chunks = vector_db.search(query_embedding, top_k=3)
-
-        answer = generate_answer(context_chunks, question, history)
+        rag_graph = build_rag_graph(vector_db)
+        result = rag_graph.invoke({
+            "question": question,
+            "history": history,
+            "is_broad": None,
+            "context_chunks": None,
+            "answer": None,
+        })
+        
+        answer = result["answer"]
         history.append((question, answer))
         session_data["history"] = history[-MAX_HISTORY_TURNS:]  # sliding window — keep only the most recent 3
         
