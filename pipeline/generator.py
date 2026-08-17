@@ -20,7 +20,7 @@ _groq_client = Groq()  # reads GROQ_API_KEY from env — same pattern as genai.C
 MAX_RETRIES = 3           # 1 initial attempt + 3 retries = 4 total tries on Gemini
 BASE_DELAY_SECONDS = 1.0  # doubles each retry: ~1s, ~2s, ~4s
 
-GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"
+GROQ_FALLBACK_MODEL = "openai/gpt-oss-120b"
 
 
 def _build_user_prompt(
@@ -67,7 +67,7 @@ def generate_answer(
     retrieved_chunks: List[Dict[str, object]],
     question: str,
     conversation_history: Optional[List[Tuple[str, str]]] = None,
-) -> str:
+) -> Tuple[str,str]:
     conversation_history = conversation_history or []
     history_block = "\n\n".join(
         f"Q: {past_q}\nA: {past_a}" for past_q, past_a in conversation_history
@@ -92,7 +92,7 @@ def generate_answer(
                 contents=user_prompt,
                 config=config,
             )
-            return response.text
+            return response.text,"Gemini"
 
         except errors.ServerError as gemini_error:
             # 5xx (503 "overloaded" is the common one) — transient, Gemini's
@@ -104,7 +104,7 @@ def generate_answer(
                 time.sleep(delay)
                 continue
             try:
-                return _call_groq(user_prompt)
+                return _call_groq(user_prompt),"groq" 
             except Exception as groq_error:
                 raise RuntimeError(
                     f"Both providers failed. Gemini: {gemini_error}. Groq: {groq_error}"
@@ -114,7 +114,7 @@ def generate_answer(
             status_code = getattr(gemini_error, "code", None)
             if status_code == 429:
                 try:
-                    return _call_groq(user_prompt)
+                    return _call_groq(user_prompt),"Groq"
                 except Exception as groq_error:
                     raise RuntimeError(
                         f"Both providers failed. Gemini: {gemini_error}. Groq: {groq_error}"
