@@ -6,6 +6,7 @@
 <title>Document Q&A</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <style>
   :root {
     --bg: #171512;
@@ -96,6 +97,24 @@
   .msg.answer.loading { color: var(--text-muted); font-style: italic; border-left-color: var(--border); }
   .msg.answer.error { color: var(--error); border-left-color: var(--error); }
 
+  /* Markdown elements now render inside .msg.answer — keep them visually
+     consistent with the rest of the chat instead of default browser sizing. */
+  .msg.answer h1, .msg.answer h2, .msg.answer h3 {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 12px 0 6px;
+  }
+  .msg.answer p { margin: 0 0 8px; }
+  .msg.answer ul, .msg.answer ol { margin: 6px 0; padding-left: 20px; }
+  .msg.answer li { margin-bottom: 4px; }
+  .msg.answer strong { color: var(--text); font-weight: 600; }
+  .msg.answer code {
+    background: var(--surface-2); border: 1px solid var(--border);
+    padding: 1px 5px; border-radius: 4px; font-size: 13px;
+  }
+
   /* Feedback row under each completed answer */
   .feedback-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding-left: 16px; }
   .fb-btn {
@@ -107,6 +126,10 @@
   .fb-btn.selected.down { color: var(--error); }
   .fb-btn:disabled { cursor: default; opacity: 0.6; }
   .fb-note { font-size: 12px; color: var(--text-muted); }
+  .provider-tag {
+    font-size: 11px; color: var(--text-muted); margin-left: auto;
+    text-transform: capitalize; opacity: 0.7;
+  }
 
   .comment-box { padding-left: 16px; margin-top: 8px; display: flex; gap: 8px; }
   .comment-box textarea {
@@ -258,26 +281,38 @@ function iconThumb(direction) {
   </svg>`;
 }
 
+// Markdown is rendered ONLY for completed assistant answers — not for the
+// user's own typed question (nothing to render there), and not for the
+// transient "loading"/"error" states (those are our own plain-text UI
+// strings, not LLM output).
 function appendMessage(role, text, extraClass = "") {
   const log = document.getElementById('chat-log');
   const row = document.createElement('div');
   row.className = `msg-row ${role}`.trim();
   const div = document.createElement('div');
   div.className = `msg ${role} ${extraClass}`.trim();
-  div.textContent = text;
+
+  const isRenderableAnswer = role === 'answer' && !extraClass.includes('loading') && !extraClass.includes('error');
+  if (isRenderableAnswer) {
+    div.innerHTML = marked.parse(text);
+  } else {
+    div.textContent = text;
+  }
+
   row.appendChild(div);
   log.appendChild(row);
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
   return { row, div };
 }
 
-function attachFeedback(answerRow, question, answerTextRef) {
+function attachFeedback(answerRow, question, answerTextRef, provider) {
   const feedbackRow = document.createElement('div');
   feedbackRow.className = 'feedback-row';
   feedbackRow.innerHTML = `
     <button class="fb-btn up" title="Good answer">${iconThumb("up")}</button>
     <button class="fb-btn down" title="Needs improvement">${iconThumb("down")}</button>
     <span class="fb-note"></span>
+    <span class="provider-tag">${provider ? `via ${provider}` : ''}</span>
   `;
   answerRow.appendChild(feedbackRow);
 
@@ -327,7 +362,9 @@ function attachFeedback(answerRow, question, answerTextRef) {
 
         if (result.regenerated && result.answer) {
           answerTextRef.text = result.answer;
-          answerRow.querySelector('.msg.answer').textContent = result.answer;
+          // Re-render as Markdown, same as the initial answer — this is
+          // still LLM output, just a regenerated version of it.
+          answerRow.querySelector('.msg.answer').innerHTML = marked.parse(result.answer);
           note.textContent = "Answer updated based on your feedback.";
         } else {
           note.textContent = "Feedback logged. Couldn't regenerate right now.";
@@ -367,10 +404,10 @@ async function askQuestion() {
     if (!response.ok) throw new Error(result.error || "Something went wrong");
 
     loadingDiv.className = "msg answer";
-    loadingDiv.textContent = result.answer;
+    loadingDiv.innerHTML = marked.parse(result.answer);
 
     const answerTextRef = { text: result.answer };
-    attachFeedback(answerRow, question, answerTextRef);
+    attachFeedback(answerRow, question, answerTextRef, result.provider);
   } catch (err) {
     loadingDiv.className = "msg answer error";
     loadingDiv.textContent = err.message;
