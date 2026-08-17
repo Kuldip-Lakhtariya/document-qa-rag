@@ -12,7 +12,7 @@ class RAGState(TypedDict):
     is_broad: Optional[bool]
     context_chunks: Optional[List[Dict]]
     answer: Optional[str]
-
+    provider: Optional[str]
 
 def build_rag_graph(vector_db):
     """
@@ -36,12 +36,12 @@ def build_rag_graph(vector_db):
         return {"context_chunks": chunks}
 
     def generate(state: RAGState) -> dict:
-        answer = generate_answer(
+        answer,provider = generate_answer(
             state["context_chunks"],
             state["question"],
             state["history"],
         )
-        return {"answer": answer}
+        return {"answer": answer, "provider": provider}
 
     def route_after_classify(state: RAGState) -> str:
         return "retrieve_broad" if state["is_broad"] else "retrieve_narrow"
