@@ -67,8 +67,6 @@ def upload():
     if not pdf_file.filename.lower().endswith(ALLOWED_EXTENSION):
         return jsonify({"error": "Only PDF files are supported"}), 400
 
-    # Get the real byte count from the stream itself — content_length can be
-    # missing or spoofed depending on the client, so don't trust it alone.
     pdf_file.stream.seek(0, os.SEEK_END)
     file_size = pdf_file.stream.tell()
     pdf_file.stream.seek(0)  # rewind — .save() below needs to read from byte 0
@@ -128,6 +126,7 @@ def ask():
             "is_broad": None,
             "context_chunks": None,
             "answer": None,
+            "provider": None,
         })
         
         answer = result["answer"]
@@ -139,17 +138,12 @@ def ask():
         # returns a clean JSON error instead of crashing into Flask's HTML page.
         return jsonify({"error": f"Failed to generate answer: {str(e)}"}), 503
 
-    return jsonify({"answer": answer})
+    return jsonify({"answer": answer, "provider": result["provider"]})
 
 
 import json
 
 FEEDBACK_LOG = "feedback_log.jsonl"
-# Flag: this is a local file — same ephemeral-filesystem caveat as before.
-# On Render free tier it's wiped on restart/redeploy. Fine for now since
-# we're not depending on it surviving; revisit if we ever want durable
-# feedback history (same DB conversation as session storage).
-
 
 @app.route("/feedback", methods=["POST"])
 def feedback():
