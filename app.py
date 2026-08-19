@@ -127,6 +127,7 @@ def ask():
             "context_chunks": None,
             "answer": None,
             "provider": None,
+            "retrieval_attempts": 0,
         })
         
         answer = result["answer"]
