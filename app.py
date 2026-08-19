@@ -122,6 +122,7 @@ def ask():
         rag_graph = build_rag_graph(vector_db)
         result = rag_graph.invoke({
             "question": question,
+            "current_query": question,
             "history": history,
             "is_broad": None,
             "context_chunks": None,
